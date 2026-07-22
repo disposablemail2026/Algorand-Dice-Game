@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Algorand Dice Roll Game</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #121212;
+      color: #ffffff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .card {
+      background: #1e1e1e;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      text-align: center;
+      max-width: 400px;
+      width: 100%;
+    }
+    button {
+      background: #00d2ff;
+      border: none;
+      color: #000;
+      padding: 12px 24px;
+      font-weight: bold;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 15px;
+      width: 100%;
+    }
+    button:disabled {
+      background: #555;
+      cursor: not-allowed;
+    }
+    .dice {
+      font-size: 80px;
+      margin: 20px 0;
+    }
+    .status {
+      margin-top: 15px;
+      font-size: 0.9rem;
+      color: #aaa;
+    }
+  </style>
+  <!-- Load Algorand & Lute SDKs via CDN -->
+  <script src="https://unpkg.com/algosdk@2.7.0/dist/browser/algosdk.min.js"></script>
+  <script src="https://unpkg.com/lute-connect@latest/dist/index.js"></script>
+</head>
+<body>
+
+  <div class="card">
+    <h1>🎲 Algo Dice Roll</h1>
+    <p>Predict if the roll will be <strong>4, 5, or 6</strong> to win!</p>
+
+    <button id="connect-btn" onclick="connectLute()">Connect Lute Wallet</button>
+
+    <div class="dice" id="dice-display">🎲</div>
+
+    <button id="roll-btn" onclick="playGame()" disabled>Bet 1 ALGO & Roll</button>
+
+    <p class="status" id="status">Status: Wallet Disconnected</p>
+  </div>
+
+  <script>
+    let userAddress = null;
+    let lute = null;
+
+    // Initialize Lute Connect
+    if (window.LuteConnect) {
+      lute = new LuteConnect('Algo Dice Game');
+    }
+
+    async function connectLute() {
+      try {
+        document.getElementById('status').innerText = "Connecting to Lute...";
+        
+        // Request account access from Lute (TestNet)
+        const addresses = await lute.connect('TestNet');
+        if (addresses && addresses.length > 0) {
+          userAddress = addresses[0];
+          document.getElementById('connect-btn').innerText = `Connected: ${userAddress.substring(0, 6)}...`;
+          document.getElementById('roll-btn').disabled = false;
+          document.getElementById('status').innerText = "Status: Ready to play on TestNet!";
+        }
+      } catch (err) {
+        console.error(err);
+        document.getElementById('status').innerText = "Connection failed or rejected.";
+      }
+    }
+
+    async function playGame() {
+      if (!userAddress) return;
+
+      document.getElementById('status').innerText = "Rolling the dice...";
+      document.getElementById('roll-btn').disabled = true;
+
+      // 1. Simulate a 6-sided dice roll
+      const rollResult = Math.floor(Math.random() * 6) + 1;
+      const diceEmojis = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+      
+      document.getElementById('dice-display').innerText = diceEmojis[rollResult - 1];
+
+      // 2. Check if player won (Rolling 4, 5, or 6 wins)
+      if (rollResult >= 4) {
+        document.getElementById('status').innerText = `🎉 You rolled a ${rollResult}! YOU WIN!`;
+      } else {
+        document.getElementById('status').innerText = `❌ You rolled a ${rollResult}. Try again!`;
+      }
+
+      document.getElementById('roll-btn').disabled = false;
+    }
+  </script>
+</body>
+</html>
