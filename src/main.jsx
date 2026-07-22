@@ -28,31 +28,16 @@ const algodClient = new algosdk.Algodv2('', 'https://testnet-api.algonode.cloud'
 // House/Dealer address receiving bets (TestNet faucet address or any valid ALGO address)
 const HOUSE_ADDRESS = 'HZ57J3TX55GWMAC27NVRRNYSPWA43V2M6GUZMBOXP23A5OMFY23U2TRP2X';
 
+// Destructure signTransactions from useWallet()
 function DiceGame() {
-  const { wallets, activeAddress, activeWallet, transactionSigner } = useWallet();
+  const { wallets, activeAddress, activeWallet, signTransactions } = useWallet();
   const [diceEmoji, setDiceEmoji] = useState('🎲');
   const [status, setStatus] = useState(activeAddress ? 'Ready to roll!' : 'Select a wallet below.');
   const [isRolling, setIsRolling] = useState(false);
 
-  const handleConnect = async (wallet) => {
-    try {
-      setStatus(`Connecting to ${wallet.metadata.name}...`);
-      await wallet.connect();
-      setStatus(`Connected! Ready to roll.`);
-    } catch (err) {
-      console.error(err);
-      setStatus(`Connection failed: Make sure pop-ups are allowed or open this page inside Pera's in-app browser.`);
-    }
-  };
+  // ... handleConnect & handleDisconnect remain same ...
 
-  const handleDisconnect = async () => {
-    if (activeWallet) {
-      await activeWallet.disconnect();
-      setStatus('Wallet disconnected.');
-    }
-  };
-
-// On-Chain Bet & Roll Logic
+  // On-Chain Bet & Roll Logic
   const playGame = async () => {
     if (!activeAddress) {
       setStatus('Please connect a wallet first.');
@@ -66,29 +51,29 @@ function DiceGame() {
       // 1. Fetch suggested params from Algorand TestNet
       const params = await algodClient.getTransactionParams().do();
 
-      // 2. Build 1 ALGO Payment Txn (1,000,000 microAlgos)
+      // 2. Build 1 ALGO Payment Txn
       const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
         from: activeAddress,
         to: HOUSE_ADDRESS,
-        amount: 1000000,
+        amount: 1000000, // 1 ALGO = 1,000,000 microAlgos
         suggestedParams: params
       });
 
       setStatus('Please approve the transaction in your wallet...');
 
-      // 3. Convert transaction to Uint8Array bytes
-      const encodedTxn = txn.toByte();
+      // 3. Convert transaction directly to Uint8Array bytes
+      const txnBytes = txn.toByte();
 
-      // 4. Sign using useWallet's signTransactions helper
-      const signedTxns = await signTransactions([encodedTxn]);
+      // 4. Send raw Uint8Array bytes to active wallet to sign
+      const signedTxns = await signTransactions([txnBytes]);
 
       setStatus('Submitting transaction to TestNet...');
 
       // 5. Send raw signed transaction to network
-      const { txId } = await algodClient.sendRawTransaction(signedTxns).do();
+      const { txId } = await algodClient.sendRawTransaction(signedTxns[0]).do();
       await algosdk.waitForConfirmation(algodClient, txId, 4);
 
-      // 6. Roll Dice after transaction is confirmed on-chain
+      // 6. Roll Dice after transaction confirms
       setStatus('Bet Confirmed! Rolling...');
 
       setTimeout(() => {
@@ -110,6 +95,8 @@ function DiceGame() {
       const errMsg = err?.message || err?.toString() || 'Transaction rejected';
       setStatus(`Failed: ${errMsg.substring(0, 80)}`);
       setIsRolling(false);
+    }
+  };
     }
   };
 
