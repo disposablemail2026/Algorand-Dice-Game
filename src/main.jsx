@@ -25,17 +25,34 @@ const walletManager = new WalletManager({
 
 // TestNet AlgoClient
 const algodClient = new algosdk.Algodv2('', 'https://testnet-api.algonode.cloud', '');
-// House/Dealer address receiving bets (TestNet faucet address or any valid ALGO address)
+// House/Dealer address receiving bets
 const HOUSE_ADDRESS = 'HZ57J3TX55GWMAC27NVRRNYSPWA43V2M6GUZMBOXP23A5OMFY23U2TRP2X';
 
-// Destructure signTransactions from useWallet()
 function DiceGame() {
   const { wallets, activeAddress, activeWallet, signTransactions } = useWallet();
   const [diceEmoji, setDiceEmoji] = useState('🎲');
   const [status, setStatus] = useState(activeAddress ? 'Ready to roll!' : 'Select a wallet below.');
   const [isRolling, setIsRolling] = useState(false);
 
-  // ... handleConnect & handleDisconnect remain same ...
+  // Connect Handler
+  const handleConnect = async (wallet) => {
+    try {
+      setStatus(`Connecting to ${wallet.metadata.name}...`);
+      await wallet.connect();
+      setStatus(`Connected! Ready to roll.`);
+    } catch (err) {
+      console.error(err);
+      setStatus(`Connection failed: Make sure pop-ups are allowed or open this page inside your wallet browser.`);
+    }
+  };
+
+  // Disconnect Handler
+  const handleDisconnect = async () => {
+    if (activeWallet) {
+      await activeWallet.disconnect();
+      setStatus('Wallet disconnected.');
+    }
+  };
 
   // On-Chain Bet & Roll Logic
   const playGame = async () => {
@@ -95,8 +112,6 @@ function DiceGame() {
       const errMsg = err?.message || err?.toString() || 'Transaction rejected';
       setStatus(`Failed: ${errMsg.substring(0, 80)}`);
       setIsRolling(false);
-    }
-  };
     }
   };
 
