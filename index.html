@@ -37,6 +37,7 @@
     }
     button:disabled {
       background: #555;
+      color: #888;
       cursor: not-allowed;
     }
     .dice {
@@ -51,20 +52,30 @@
     }
   </style>
 
-  <!-- Load Pera Wallet Connect Module -->
+  <!-- Load bundled Pera Wallet Connect -->
   <script type="module">
-    import { PeraWalletConnect } from 'https://cdn.jsdelivr.net/npm/@perawallet/connect@1.5.1/+esm';
+    import { PeraWalletConnect } from 'https://esm.sh/@perawallet/connect';
 
-    // Initialize Pera Wallet configured for Algorand TestNet (416002)
+    // Initialize Pera Wallet Connect instance for TestNet (Chain ID: 416002)
     const peraWallet = new PeraWalletConnect({ chainId: 416002 });
     let userAddress = null;
 
+    // Attach functions to the global window so buttons can trigger them
     window.connectWallet = async function() {
       const statusElement = document.getElementById('status');
+      statusElement.innerText = "Opening Pera Wallet...";
+
       try {
-        statusElement.innerText = "Connecting to Pera Wallet...";
         const accounts = await peraWallet.connect();
         
+        // Listen for disconnect events
+        peraWallet.connector?.on("disconnect", () => {
+          userAddress = null;
+          document.getElementById('connect-btn').innerText = "Connect Pera Wallet";
+          document.getElementById('roll-btn').disabled = true;
+          statusElement.innerText = "Wallet Disconnected";
+        });
+
         if (accounts.length > 0) {
           userAddress = accounts[0];
           document.getElementById('connect-btn').innerText = `Connected: ${userAddress.substring(0, 6)}...`;
@@ -73,8 +84,9 @@
         }
       } catch (error) {
         if (error?.data?.type === "CONNECT_MODAL_CLOSED") {
-          statusElement.innerText = "Connection modal was closed.";
+          statusElement.innerText = "Connection modal closed.";
         } else {
+          console.error(error);
           statusElement.innerText = "Connection error. Please try again.";
         }
       }
@@ -100,13 +112,13 @@
       document.getElementById('roll-btn').disabled = false;
     };
 
-    // Auto reconnect on refresh if already paired
+    // Auto reconnect if you refreshed and already had an active session
     peraWallet.reconnectSession().then((accounts) => {
       if (accounts.length > 0) {
         userAddress = accounts[0];
         document.getElementById('connect-btn').innerText = `Connected: ${userAddress.substring(0, 6)}...`;
         document.getElementById('roll-btn').disabled = false;
-        document.getElementById('status').innerText = "Reconnected to TestNet!";
+        document.getElementById('status').innerText = "Reconnected on TestNet!";
       }
     });
   </script>
@@ -117,7 +129,7 @@
     <h1>🎲 Algo Dice Roll</h1>
     <p>Predict if the roll will be <strong>4, 5, or 6</strong> to win!</p>
 
-    <button id="connect-btn" onclick="connectWallet()">Connect Wallet</button>
+    <button id="connect-btn" onclick="connectWallet()">Connect Pera Wallet</button>
 
     <div class="dice" id="dice-display">🎲</div>
 
