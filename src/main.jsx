@@ -78,19 +78,16 @@ function DiceGame() {
 
       setStatus('Please approve the transaction in your wallet...');
 
-      // 3. Convert transaction directly to Uint8Array bytes
-      const txnBytes = txn.toByte();
-
-      // 4. Send raw Uint8Array bytes to active wallet to sign
-      const signedTxns = await signTransactions([txnBytes]);
+      // 3. Pass the algosdk.Transaction object directly into signTransactions
+      const signedTxns = await signTransactions([txn]);
 
       setStatus('Submitting transaction to TestNet...');
 
-      // 5. Send raw signed transaction to network
+      // 4. Send raw signed transaction bytes to network
       const { txId } = await algodClient.sendRawTransaction(signedTxns[0]).do();
       await algosdk.waitForConfirmation(algodClient, txId, 4);
 
-      // 6. Roll Dice after transaction confirms
+      // 5. Roll Dice after transaction confirms
       setStatus('Bet Confirmed! Rolling...');
 
       setTimeout(() => {
