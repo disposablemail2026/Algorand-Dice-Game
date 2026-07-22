@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { NetworkId, WalletId, WalletManager, WalletProvider, useWallet } from '@txnlab/use-wallet-react';
 
-// Configure wallet manager for TestNet
 const walletManager = new WalletManager({
   wallets: [WalletId.PERA, WalletId.DEFLY, WalletId.LUTE],
   network: NetworkId.TESTNET
@@ -14,22 +13,18 @@ function DiceGame() {
   const [status, setStatus] = useState(activeAddress ? 'Ready to roll!' : 'Please connect a wallet.');
   const [isRolling, setIsRolling] = useState(false);
 
-  // Handle wallet connection
+  // Simplified Connection Trigger
   const handleConnect = async (wallet) => {
     try {
       setStatus(`Connecting to ${wallet.metadata.name}...`);
-      const accounts = await wallet.connect();
-      if (accounts && accounts.length > 0) {
-        wallet.setActiveAccount(accounts[0].address);
-        setStatus(`Connected! Ready to roll.`);
-      }
+      await wallet.connect();
+      setStatus(`Connected! Ready to roll.`);
     } catch (err) {
       console.error(err);
       setStatus('Connection canceled or failed.');
     }
   };
 
-  // Handle disconnect
   const handleDisconnect = async () => {
     if (activeWallet) {
       await activeWallet.disconnect();
@@ -37,7 +32,6 @@ function DiceGame() {
     }
   };
 
-  // Game Logic
   const playGame = () => {
     if (!activeAddress) return;
 
@@ -82,7 +76,7 @@ function DiceGame() {
         <h1 style={{ margin: '0 0 10px 0' }}>🎲 Algo Dice Roll</h1>
         <p style={{ color: '#aaa', fontSize: '0.9rem' }}>Predict if the roll will be <strong>4, 5, or 6</strong> to win!</p>
 
-        {/* Wallet Controls */}
+        {/* Wallet Connection Buttons */}
         {!activeAddress ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '15px' }}>
             {wallets.map((wallet) => (
@@ -106,7 +100,7 @@ function DiceGame() {
         ) : (
           <div style={{ marginTop: '15px' }}>
             <p style={{ fontSize: '0.8rem', color: '#00d2ff', wordBreak: 'break-all', margin: '5px 0' }}>
-              Account: {activeAddress.substring(0, 6)}...{activeAddress.substring(activeAddress.length - 4)}
+              Connected: {activeAddress.substring(0, 6)}...{activeAddress.substring(activeAddress.length - 4)}
             </p>
             <button
               onClick={handleDisconnect}
@@ -148,7 +142,7 @@ function DiceGame() {
           {isRolling ? 'Rolling...' : 'Bet 1 ALGO & Roll'}
         </button>
 
-        {/* Status Message */}
+        {/* Status Text */}
         <p style={{ marginTop: '15px', fontSize: '0.85rem', color: '#aaa' }}>
           {status}
         </p>
