@@ -2,9 +2,19 @@ import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { NetworkId, WalletId, WalletManager, WalletProvider, useWallet } from '@txnlab/use-wallet-react';
 
-// Configure wallet manager with MNEMONIC added for instant testing on tablet
+// Configure Lute with site metadata so its popup can negotiate connection
 const walletManager = new WalletManager({
-  wallets: [WalletId.PERA, WalletId.DEFLY, WalletId.LUTE, WalletId.MNEMONIC],
+  wallets: [
+    WalletId.PERA,
+    WalletId.DEFLY,
+    {
+      id: WalletId.LUTE,
+      options: {
+        siteName: 'Algo Dice Roll'
+      }
+    },
+    WalletId.MNEMONIC
+  ],
   network: NetworkId.TESTNET
 });
 
@@ -21,7 +31,7 @@ function DiceGame() {
       setStatus(`Connected! Ready to roll.`);
     } catch (err) {
       console.error(err);
-      setStatus(`Connection failed: Make sure the ${wallet.metadata.name} app is installed on your tablet, or use "Mnemonic Wallet".`);
+      setStatus(`Connection failed: If using Lute, ensure pop-ups are allowed and you are logged in at lute.app.`);
     }
   };
 
@@ -84,7 +94,7 @@ function DiceGame() {
                 key={wallet.id}
                 onClick={() => handleConnect(wallet)}
                 style={{
-                  background: wallet.id === 'mnemonic' ? '#00ffaa' : '#00d2ff',
+                  background: wallet.id === 'lute' ? '#ffd700' : wallet.id === 'mnemonic' ? '#00ffaa' : '#00d2ff',
                   border: 'none',
                   color: '#000',
                   padding: '12px',
