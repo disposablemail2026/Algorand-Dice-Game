@@ -54,7 +54,7 @@ function DiceGame() {
 
 // On-Chain Bet & Roll Logic
   const playGame = async () => {
-    if (!activeAddress || !activeWallet) {
+    if (!activeAddress) {
       setStatus('Please connect a wallet first.');
       return;
     }
@@ -76,11 +76,11 @@ function DiceGame() {
 
       setStatus('Please approve the transaction in your wallet...');
 
-      // 3. Convert transaction to bytes for wallet signing
-      const encodedTxn = txn.toByte();
+      // 3. Encode transaction for use-wallet signer
+      const encodedTxn = algosdk.encodeUnsignedTransaction(txn);
       
-      // 4. Request signature from active wallet
-      const signedTxns = await activeWallet.signTransactions([encodedTxn]);
+      // 4. Sign using useWallet's transactionSigner hook helper
+      const signedTxns = await transactionSigner([encodedTxn], [0]);
 
       setStatus('Submitting transaction to TestNet...');
 
@@ -107,7 +107,6 @@ function DiceGame() {
 
     } catch (err) {
       console.error(err);
-      // Displays the specific error message on screen
       const errMsg = err?.message || err?.toString() || 'Transaction rejected';
       setStatus(`Failed: ${errMsg.substring(0, 80)}`);
       setIsRolling(false);
