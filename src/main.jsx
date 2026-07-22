@@ -3,48 +3,126 @@ import ReactDOM from 'react-dom/client';
 import algosdk from 'algosdk';
 import { NetworkId, WalletId, WalletManager, WalletProvider, useWallet } from '@txnlab/use-wallet-react';
 
-// 1. Configure Wallet Manager for TestNet
 const walletManager = new WalletManager({
   wallets: [
-    {
-      id: WalletId.PERA,
-      options: { compactMode: false }
-    },
+    { id: WalletId.PERA, options: { compactMode: false } },
     WalletId.DEFLY,
-    {
-      id: WalletId.LUTE,
-      options: { siteName: 'Algo Dice Roll' }
-    },
+    { id: WalletId.LUTE, options: { siteName: 'Algo Dice Roll' } },
     WalletId.MNEMONIC
   ],
   network: NetworkId.TESTNET
 });
 
-// 2. Initialize Algod Client for TestNet
 const algodClient = new algosdk.Algodv2('', 'https://testnet-api.algonode.cloud', '');
 
-// House address receiving the bets
-const HOUSE_ADDRESS = 'HZ57J3TX55GWMAC27NVRRNYSPWA43V2M6GUZMBOXP23A5OMFY23U2TRP2X';
+// TEAL Approval Program (0.1 ALGO Minimum Bet, 2x Dynamic Payout)
+const APPROVAL_TEAL = `#pragma version 10
+txn NumAppArgs
+int 0
+==
+bnz main_bare
+txna ApplicationArgs 0
+method "roll(pay)uint64"
+==
+bnz main_roll
+txna ApplicationArgs 0
+method "fund_house(pay)void"
+==
+bnz main_fund
+err
+
+main_bare:
+txn OnCompletion
+int NoOp
+==
+return
+
+main_roll:
+txn OnCompletion
+int NoOp
+==
+assert
+gtxn 0 Receiver
+global CurrentApplicationAddress
+==
+assert
+gtxn 0 Amount
+int 100000
+>=
+assert
+global LastTimestamp
+itob
+txn TxID
+concat
+sha256
+btoi
+int 6
+%
+int 1
++
+store 0
+load 0
+int 4
+>=
+bz skip_payout
+itxn_begin
+int pay
+itxn_field TypeEnum
+txn Sender
+itxn_field Receiver
+gtxn 0 Amount
+int 2
+*
+itxn_field Amount
+int 0
+itxn_field Fee
+itxn_submit
+skip_payout:
+load 0
+itob
+byte 0x151f7c75
+swap
+concat
+log
+int 1
+return
+
+main_fund:
+txn OnCompletion
+int NoOp
+==
+assert
+gtxn 0 Receiver
+global CurrentApplicationAddress
+==
+assert
+gtxn 0 Amount
+int 0
+>
+assert
+int 1
+return`;
+
+const CLEAR_TEAL = `#pragma version 10\nint 1\nreturn`;
 
 function DiceGame() {
   const { wallets, activeAddress, activeWallet, transactionSigner } = useWallet();
+  const [appId, setAppId] = useState(0);
   const [diceEmoji, setDiceEmoji] = useState('🎲');
-  const [status, setStatus] = useState(activeAddress ? 'Ready to roll!' : 'Select a wallet below.');
-  const [isRolling, setIsRolling] = useState(false);
+  const [status, setStatus] = useState(activeAddress ? 'Ready!' : 'Select a wallet below.');
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  // Connection Handler
   const handleConnect = async (wallet) => {
     try {
       setStatus(`Connecting to ${wallet.metadata.name}...`);
       await wallet.connect();
-      setStatus(`Connected! Ready to roll.`);
+      setStatus('Connected!');
     } catch (err) {
       console.error(err);
-      setStatus('Connection canceled or failed.');
+      setStatus('Connection failed.');
     }
   };
 
-  // Disconnect Handler
   const handleDisconnect = async () => {
     if (activeWallet) {
       await activeWallet.disconnect();
@@ -52,92 +130,136 @@ function DiceGame() {
     }
   };
 
-  // On-Chain Bet & Roll Logic using AtomicTransactionComposer
-  const playGame = async () => {
+  // 1. One-Click Smart Contract Deployment
+  const deployContract = async () => {
     if (!activeAddress || !transactionSigner) {
-      setStatus('Please connect a wallet first.');
+      setStatus('Connect wallet first.');
       return;
     }
 
-    setIsRolling(true);
-    setStatus('Preparing 1 ALGO bet...');
+    setIsProcessing(true);
+    setStatus('Compiling & deploying contract to TestNet...');
 
     try {
-      // Step A: Get suggested network parameters
+      // Compile TEAL directly via algod Node API
+      const approvalCompiled = await algodClient.compile(APPROVAL_TEAL).do();
+      const clearCompiled = await algodClient.compile(CLEAR_TEAL).do();
+
+      const approvalBytes = new Uint8Array(Buffer.from(approvalCompiled.result, 'base64'));
+      const clearBytes = new Uint8Array(Buffer.from(clearCompiled.result, 'base64'));
+
       const params = await algodClient.getTransactionParams().do();
 
-      // Step B: Build Payment Transaction (1 ALGO = 1,000,000 microAlgos)
-      const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+      const createTxn = algosdk.makeApplicationCreateTxnFromObject({
         from: activeAddress,
-        to: HOUSE_ADDRESS,
-        amount: 1000000,
+        approvalProgram: approvalBytes,
+        clearProgram: clearBytes,
+        numLocalInts: 0,
+        numLocalByteSlices: 0,
+        numGlobalInts: 0,
+        numGlobalByteSlices: 0,
+        onComplete: algosdk.OnApplicationComplete.NoOpOC,
         suggestedParams: params
       });
 
-      setStatus('Please approve the transaction in your wallet...');
-
-      // Step C: Create AtomicTransactionComposer and delegate signing
       const atc = new algosdk.AtomicTransactionComposer();
-      atc.addTransaction({
-        txn: txn,
-        signer: transactionSigner
+      atc.addTransaction({ txn: createTxn, signer: transactionSigner });
+
+      setStatus('Approve application creation in your wallet...');
+      const result = await atc.execute(algodClient, 4);
+      
+      // Get App ID from transaction confirmation
+      const txnInfo = await algodClient.pendingTransactionInformation(result.txIDs[0]).do();
+      const newAppId = txnInfo['application-index'];
+
+      setAppId(newAppId);
+      setStatus(`🎉 Contract Deployed! App ID: ${newAppId}`);
+      setIsProcessing(false);
+
+    } catch (err) {
+      console.error(err);
+      const errMsg = err?.message || err?.toString() || 'Deploy failed';
+      setStatus(`Deploy Failed: ${errMsg.substring(0, 80)}`);
+      setIsProcessing(false);
+    }
+  };
+
+  // 2. Roll Logic against Deployed App ID
+  const playGame = async () => {
+    if (!activeAddress || !transactionSigner) return;
+    if (appId === 0) {
+      setStatus('Please tap "Deploy Contract" first!');
+      return;
+    }
+
+    setIsProcessing(true);
+    setStatus('Preparing 0.1 ALGO bet...');
+
+    try {
+      const params = await algodClient.getTransactionParams().do();
+      const appAddress = algosdk.getApplicationAddress(appId);
+
+      // Payment Txn: 0.1 ALGO (100,000 microAlgos)
+      const payTxn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+        from: activeAddress,
+        to: appAddress,
+        amount: 100000,
+        suggestedParams: params
       });
 
-      setStatus('Submitting bet to TestNet...');
+      // Application Call Txn
+      const appCallTxn = algosdk.makeApplicationNoOpTxnFromObject({
+        from: activeAddress,
+        appIndex: appId,
+        appArgs: [new TextEncoder().encode('roll')],
+        suggestedParams: params
+      });
 
-      // Step D: Execute transaction on-chain & wait for confirmation
+      const atc = new algosdk.AtomicTransactionComposer();
+      atc.addTransaction({ txn: payTxn, signer: transactionSigner });
+      atc.addTransaction({ txn: appCallTxn, signer: transactionSigner });
+
+      setStatus('Approve bet in your wallet...');
       const result = await atc.execute(algodClient, 4);
-      const txId = result.txIDs[0];
+      const txId = result.txIDs[1];
 
       setStatus('Bet Confirmed! Rolling...');
 
-      // Step E: Execute dice roll logic
       setTimeout(() => {
         const rollResult = Math.floor(Math.random() * 6) + 1;
         const diceEmojis = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
-
         setDiceEmoji(diceEmojis[rollResult - 1]);
 
         if (rollResult >= 4) {
-          setStatus(`🎉 You rolled a ${rollResult}! YOU WIN! (Tx: ${txId.substring(0, 6)}...)`);
+          setStatus(`🎉 Rolled a ${rollResult}! WON 0.2 ALGO! (Tx: ${txId.substring(0, 6)}...)`);
         } else {
-          setStatus(`❌ You rolled a ${rollResult}. House wins! (Tx: ${txId.substring(0, 6)}...)`);
+          setStatus(`❌ Rolled a ${rollResult}. House wins! (Tx: ${txId.substring(0, 6)}...)`);
         }
-        setIsRolling(false);
+        setIsProcessing(false);
       }, 600);
 
     } catch (err) {
       console.error(err);
-      const errMsg = err?.message || err?.toString() || 'Transaction rejected';
+      const errMsg = err?.message || err?.toString() || 'Roll failed';
       setStatus(`Failed: ${errMsg.substring(0, 80)}`);
-      setIsRolling(false);
+      setIsProcessing(false);
     }
   };
 
   return (
     <div style={{
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      minHeight: '100vh',
-      background: '#121212',
-      color: '#ffffff',
-      fontFamily: 'Arial, sans-serif',
-      padding: '1rem'
+      display: 'flex', justifyContent: 'center', alignItems: 'center',
+      minHeight: '100vh', background: '#121212', color: '#ffffff',
+      fontFamily: 'Arial, sans-serif', padding: '1rem'
     }}>
       <div style={{
-        background: '#1e1e1e',
-        padding: '2rem',
-        borderRadius: '12px',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-        textAlign: 'center',
-        maxWidth: '400px',
-        width: '100%'
+        background: '#1e1e1e', padding: '2rem', borderRadius: '12px',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.5)', textAlign: 'center',
+        maxWidth: '400px', width: '100%'
       }}>
         <h1 style={{ margin: '0 0 10px 0' }}>🎲 Algo Dice Roll</h1>
-        <p style={{ color: '#aaa', fontSize: '0.9rem' }}>Predict <strong>4, 5, or 6</strong> to win!</p>
+        <p style={{ color: '#aaa', fontSize: '0.85rem' }}>Predict <strong>4, 5, or 6</strong> to win double!</p>
 
-        {/* Wallet Selection */}
         {!activeAddress ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '15px' }}>
             {wallets.map((wallet) => (
@@ -146,12 +268,8 @@ function DiceGame() {
                 onClick={() => handleConnect(wallet)}
                 style={{
                   background: wallet.id === 'lute' ? '#ffd700' : wallet.id === 'mnemonic' ? '#00ffaa' : '#00d2ff',
-                  border: 'none',
-                  color: '#000',
-                  padding: '12px',
-                  fontWeight: 'bold',
-                  borderRadius: '6px',
-                  cursor: 'pointer'
+                  border: 'none', color: '#000', padding: '12px',
+                  fontWeight: 'bold', borderRadius: '6px', cursor: 'pointer'
                 }}
               >
                 Connect {wallet.metadata.name}
@@ -163,47 +281,49 @@ function DiceGame() {
             <p style={{ fontSize: '0.8rem', color: '#00d2ff', wordBreak: 'break-all', margin: '5px 0' }}>
               Connected: {activeAddress.substring(0, 6)}...{activeAddress.substring(activeAddress.length - 4)}
             </p>
-            <button
-              onClick={handleDisconnect}
-              style={{
-                background: '#333',
-                color: '#ff5555',
-                border: '1px solid #444',
-                padding: '6px 12px',
-                borderRadius: '4px',
-                fontSize: '0.8rem',
-                cursor: 'pointer'
-              }}
-            >
-              Disconnect Wallet
-            </button>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '8px' }}>
+              <button
+                onClick={handleDisconnect}
+                style={{
+                  background: '#333', color: '#ff5555', border: '1px solid #444',
+                  padding: '6px 12px', borderRadius: '4px', fontSize: '0.8rem', cursor: 'pointer'
+                }}
+              >
+                Disconnect
+              </button>
+              {appId === 0 && (
+                <button
+                  onClick={deployContract}
+                  disabled={isProcessing}
+                  style={{
+                    background: '#00ffaa', color: '#000', border: 'none',
+                    padding: '6px 12px', borderRadius: '4px', fontSize: '0.8rem',
+                    fontWeight: 'bold', cursor: 'pointer'
+                  }}
+                >
+                  🚀 Deploy Contract
+                </button>
+              )}
+            </div>
           </div>
         )}
 
-        {/* Dice Display */}
-        <div style={{ fontSize: '80px', margin: '20px 0' }}>
-          {diceEmoji}
-        </div>
+        <div style={{ fontSize: '80px', margin: '20px 0' }}>{diceEmoji}</div>
 
-        {/* Play Button */}
         <button
           onClick={playGame}
-          disabled={!activeAddress || isRolling}
+          disabled={!activeAddress || isProcessing || appId === 0}
           style={{
-            background: activeAddress && !isRolling ? '#00d2ff' : '#444',
-            color: activeAddress && !isRolling ? '#000' : '#888',
-            border: 'none',
-            padding: '12px 24px',
-            fontWeight: 'bold',
-            borderRadius: '6px',
-            cursor: activeAddress && !isRolling ? 'pointer' : 'not-allowed',
+            background: activeAddress && appId !== 0 && !isProcessing ? '#00d2ff' : '#444',
+            color: activeAddress && appId !== 0 && !isProcessing ? '#000' : '#888',
+            border: 'none', padding: '12px 24px', fontWeight: 'bold',
+            borderRadius: '6px', cursor: activeAddress && appId !== 0 && !isProcessing ? 'pointer' : 'not-allowed',
             width: '100%'
           }}
         >
-          {isRolling ? 'Processing Bet...' : 'Bet 1 ALGO & Roll'}
+          {appId === 0 ? 'Deploy Contract First' : isProcessing ? 'Processing...' : 'Bet 0.1 ALGO & Roll'}
         </button>
 
-        {/* Status Message */}
         <p style={{ marginTop: '15px', fontSize: '0.85rem', color: '#aaa', wordBreak: 'break-word' }}>
           {status}
         </p>
