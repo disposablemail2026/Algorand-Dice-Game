@@ -50,7 +50,7 @@ gtxn 0 Amount
 int 100000
 >=
 assert
-global LastTimestamp
+global LatestTimestamp
 itob
 txn TxID
 concat
