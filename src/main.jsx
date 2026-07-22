@@ -105,6 +105,9 @@ return`;
 
 const CLEAR_TEAL = `#pragma version 10\nint 1\nreturn`;
 
+// Helper: Converts Base64 to Uint8Array natively in browser without Buffer
+const base64ToBytes = (base64) => Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+
 function DiceGame() {
   const { wallets, activeAddress, activeWallet, transactionSigner } = useWallet();
   const [appId, setAppId] = useState(0);
@@ -145,8 +148,9 @@ function DiceGame() {
       const approvalCompiled = await algodClient.compile(APPROVAL_TEAL).do();
       const clearCompiled = await algodClient.compile(CLEAR_TEAL).do();
 
-      const approvalBytes = new Uint8Array(Buffer.from(approvalCompiled.result, 'base64'));
-      const clearBytes = new Uint8Array(Buffer.from(clearCompiled.result, 'base64'));
+      // Native browser base64 conversion
+      const approvalBytes = base64ToBytes(approvalCompiled.result);
+      const clearBytes = base64ToBytes(clearCompiled.result);
 
       const params = await algodClient.getTransactionParams().do();
 
