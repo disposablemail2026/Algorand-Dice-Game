@@ -2,18 +2,18 @@ import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { NetworkId, WalletId, WalletManager, WalletProvider, useWallet } from '@txnlab/use-wallet-react';
 
+// Configure wallet manager with MNEMONIC added for instant testing on tablet
 const walletManager = new WalletManager({
-  wallets: [WalletId.PERA, WalletId.DEFLY, WalletId.LUTE],
+  wallets: [WalletId.PERA, WalletId.DEFLY, WalletId.LUTE, WalletId.MNEMONIC],
   network: NetworkId.TESTNET
 });
 
 function DiceGame() {
   const { wallets, activeAddress, activeWallet } = useWallet();
   const [diceEmoji, setDiceEmoji] = useState('🎲');
-  const [status, setStatus] = useState(activeAddress ? 'Ready to roll!' : 'Please connect a wallet.');
+  const [status, setStatus] = useState(activeAddress ? 'Ready to roll!' : 'Select a wallet below.');
   const [isRolling, setIsRolling] = useState(false);
 
-  // Simplified Connection Trigger
   const handleConnect = async (wallet) => {
     try {
       setStatus(`Connecting to ${wallet.metadata.name}...`);
@@ -21,7 +21,7 @@ function DiceGame() {
       setStatus(`Connected! Ready to roll.`);
     } catch (err) {
       console.error(err);
-      setStatus('Connection canceled or failed.');
+      setStatus(`Connection failed: Make sure the ${wallet.metadata.name} app is installed on your tablet, or use "Mnemonic Wallet".`);
     }
   };
 
@@ -84,7 +84,7 @@ function DiceGame() {
                 key={wallet.id}
                 onClick={() => handleConnect(wallet)}
                 style={{
-                  background: '#00d2ff',
+                  background: wallet.id === 'mnemonic' ? '#00ffaa' : '#00d2ff',
                   border: 'none',
                   color: '#000',
                   padding: '12px',
@@ -142,8 +142,8 @@ function DiceGame() {
           {isRolling ? 'Rolling...' : 'Bet 1 ALGO & Roll'}
         </button>
 
-        {/* Status Text */}
-        <p style={{ marginTop: '15px', fontSize: '0.85rem', color: '#aaa' }}>
+        {/* Status Message */}
+        <p style={{ marginTop: '15px', fontSize: '0.85rem', color: '#aaa', wordBreak: 'break-word' }}>
           {status}
         </p>
       </div>
