@@ -49,8 +49,7 @@
       color: #aaa;
     }
   </style>
-  <!-- Load Algorand & Lute SDKs via CDN -->
-  <script src="https://unpkg.com/algosdk@2.7.0/dist/browser/algosdk.min.js"></script>
+  <!-- Load Lute SDK -->
   <script src="https://unpkg.com/lute-connect@latest/dist/index.js"></script>
 </head>
 <body>
@@ -72,26 +71,28 @@
     let userAddress = null;
     let lute = null;
 
-    // Initialize Lute Connect
-    if (window.LuteConnect) {
-      lute = new LuteConnect('Algo Dice Game');
-    }
-
     async function connectLute() {
+      const statusElement = document.getElementById('status');
       try {
-        document.getElementById('status').innerText = "Connecting to Lute...";
+        statusElement.innerText = "Opening Lute... (Allow pop-ups if prompted)";
+
+        // Initialize Lute Connect with app site name
+        lute = new LuteConnect('Algo Dice Game');
         
-        // Request account access from Lute (TestNet)
-        const addresses = await lute.connect('TestNet');
+        // Connect specifically specifying Algorand TestNet Genesis ID
+        const addresses = await lute.connect('testnet-v1.0');
+        
         if (addresses && addresses.length > 0) {
           userAddress = addresses[0];
           document.getElementById('connect-btn').innerText = `Connected: ${userAddress.substring(0, 6)}...`;
           document.getElementById('roll-btn').disabled = false;
-          document.getElementById('status').innerText = "Status: Ready to play on TestNet!";
+          statusElement.innerText = "Status: Ready to play on TestNet!";
+        } else {
+          statusElement.innerText = "No account selected in Lute.";
         }
       } catch (err) {
         console.error(err);
-        document.getElementById('status').innerText = "Connection failed or rejected.";
+        statusElement.innerText = "Connection failed. Please check pop-up permissions or open Lute in another tab.";
       }
     }
 
@@ -101,13 +102,12 @@
       document.getElementById('status').innerText = "Rolling the dice...";
       document.getElementById('roll-btn').disabled = true;
 
-      // 1. Simulate a 6-sided dice roll
+      // Simulate 6-sided dice roll
       const rollResult = Math.floor(Math.random() * 6) + 1;
       const diceEmojis = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
       
       document.getElementById('dice-display').innerText = diceEmojis[rollResult - 1];
 
-      // 2. Check if player won (Rolling 4, 5, or 6 wins)
       if (rollResult >= 4) {
         document.getElementById('status').innerText = `🎉 You rolled a ${rollResult}! YOU WIN!`;
       } else {
