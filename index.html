@@ -47,9 +47,9 @@
       margin-top: 15px;
       font-size: 0.9rem;
       color: #aaa;
+      word-break: break-all;
     }
   </style>
-  <!-- Load Lute SDK -->
   <script src="https://unpkg.com/lute-connect@latest/dist/index.js"></script>
 </head>
 <body>
@@ -69,30 +69,29 @@
 
   <script>
     let userAddress = null;
-    let lute = null;
 
     async function connectLute() {
       const statusElement = document.getElementById('status');
-      try {
-        statusElement.innerText = "Opening Lute... (Allow pop-ups if prompted)";
+      statusElement.innerText = "Attempting connection...";
 
-        // Initialize Lute Connect with app site name
-        lute = new LuteConnect('Algo Dice Game');
+      try {
+        // Initialize inside the user tap event to prevent Android pop-up blocking
+        const lute = new LuteConnect('Algo Dice Game');
         
-        // Connect specifically specifying Algorand TestNet Genesis ID
+        // Connect to TestNet
         const addresses = await lute.connect('testnet-v1.0');
         
         if (addresses && addresses.length > 0) {
           userAddress = addresses[0];
           document.getElementById('connect-btn').innerText = `Connected: ${userAddress.substring(0, 6)}...`;
           document.getElementById('roll-btn').disabled = false;
-          statusElement.innerText = "Status: Ready to play on TestNet!";
+          statusElement.innerText = "Connected to TestNet!";
         } else {
-          statusElement.innerText = "No account selected in Lute.";
+          statusElement.innerText = "No account found or window was closed.";
         }
       } catch (err) {
         console.error(err);
-        statusElement.innerText = "Connection failed. Please check pop-up permissions or open Lute in another tab.";
+        statusElement.innerText = "Android blocked the Lute pop-up. Check Chrome Pop-up settings (top right 3 dots -> Site Settings -> Pop-ups).";
       }
     }
 
@@ -102,7 +101,6 @@
       document.getElementById('status').innerText = "Rolling the dice...";
       document.getElementById('roll-btn').disabled = true;
 
-      // Simulate 6-sided dice roll
       const rollResult = Math.floor(Math.random() * 6) + 1;
       const diceEmojis = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
       
