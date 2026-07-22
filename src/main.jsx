@@ -52,39 +52,44 @@ function DiceGame() {
     }
   };
 
-  // On-Chain Bet & Roll Logic
+// On-Chain Bet & Roll Logic
   const playGame = async () => {
-    if (!activeAddress || !transactionSigner) return;
+    if (!activeAddress || !activeWallet) {
+      setStatus('Please connect a wallet first.');
+      return;
+    }
 
     setIsRolling(true);
-    setStatus('Creating 1 ALGO bet transaction...');
+    setStatus('Preparing 1 ALGO bet...');
 
     try {
-      // 1. Get suggested params from TestNet
+      // 1. Fetch suggested params from Algorand TestNet
       const params = await algodClient.getTransactionParams().do();
 
-      // 2. Build 1 ALGO Payment Transaction (1,000,000 microAlgos)
+      // 2. Build 1 ALGO Payment Txn (1,000,000 microAlgos)
       const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
         from: activeAddress,
         to: HOUSE_ADDRESS,
-        amount: 1000000, // 1 ALGO
+        amount: 1000000,
         suggestedParams: params
       });
 
-      setStatus('Please sign the 1 ALGO bet in your wallet...');
+      setStatus('Please approve the transaction in your wallet...');
 
-      // 3. Prompt Wallet to Sign
-      const encodedTxn = algosdk.encodeUnsignedTransaction(txn);
-      const signedTxns = await transactionSigner([encodedTxn], [0]);
+      // 3. Convert transaction to bytes for wallet signing
+      const encodedTxn = txn.toByte();
+      
+      // 4. Request signature from active wallet
+      const signedTxns = await activeWallet.signTransactions([encodedTxn]);
 
       setStatus('Submitting transaction to TestNet...');
 
-      // 4. Send transaction to TestNet
+      // 5. Send raw signed transaction to network
       const { txId } = await algodClient.sendRawTransaction(signedTxns).do();
       await algosdk.waitForConfirmation(algodClient, txId, 4);
 
-      // 5. Execute Game Roll logic after payment confirms
-      setStatus('Bet Confirmed! Rolling the dice...');
+      // 6. Roll Dice after transaction is confirmed on-chain
+      setStatus('Bet Confirmed! Rolling...');
       
       setTimeout(() => {
         const rollResult = Math.floor(Math.random() * 6) + 1;
@@ -102,7 +107,9 @@ function DiceGame() {
 
     } catch (err) {
       console.error(err);
-      setStatus('Bet canceled or transaction failed.');
+      // Displays the specific error message on screen
+      const errMsg = err?.message || err?.toString() || 'Transaction rejected';
+      setStatus(`Failed: ${errMsg.substring(0, 80)}`);
       setIsRolling(false);
     }
   };
