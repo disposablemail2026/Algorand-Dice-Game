@@ -3,38 +3,36 @@ import ReactDOM from 'react-dom/client';
 import algosdk from 'algosdk';
 import { NetworkId, WalletId, WalletManager, WalletProvider, useWallet } from '@txnlab/use-wallet-react';
 
+// 1. Configure Wallet Manager for TestNet
 const walletManager = new WalletManager({
   wallets: [
     {
       id: WalletId.PERA,
-      options: {
-        compactMode: false
-      }
+      options: { compactMode: false }
     },
     WalletId.DEFLY,
     {
       id: WalletId.LUTE,
-      options: {
-        siteName: 'Algo Dice Roll'
-      }
+      options: { siteName: 'Algo Dice Roll' }
     },
     WalletId.MNEMONIC
   ],
   network: NetworkId.TESTNET
 });
 
-// TestNet AlgoClient
+// 2. Initialize Algod Client for TestNet
 const algodClient = new algosdk.Algodv2('', 'https://testnet-api.algonode.cloud', '');
-// House/Dealer address receiving bets
+
+// House address receiving the bets
 const HOUSE_ADDRESS = 'HZ57J3TX55GWMAC27NVRRNYSPWA43V2M6GUZMBOXP23A5OMFY23U2TRP2X';
 
 function DiceGame() {
-  const { wallets, activeAddress, activeWallet, signTransactions } = useWallet();
+  const { wallets, activeAddress, activeWallet, transactionSigner } = useWallet();
   const [diceEmoji, setDiceEmoji] = useState('🎲');
   const [status, setStatus] = useState(activeAddress ? 'Ready to roll!' : 'Select a wallet below.');
   const [isRolling, setIsRolling] = useState(false);
 
-  // Connect Handler
+  // Connection Handler
   const handleConnect = async (wallet) => {
     try {
       setStatus(`Connecting to ${wallet.metadata.name}...`);
@@ -42,7 +40,7 @@ function DiceGame() {
       setStatus(`Connected! Ready to roll.`);
     } catch (err) {
       console.error(err);
-      setStatus(`Connection failed: Make sure pop-ups are allowed or open this page inside your wallet browser.`);
+      setStatus('Connection canceled or failed.');
     }
   };
 
@@ -54,9 +52,9 @@ function DiceGame() {
     }
   };
 
-  // On-Chain Bet & Roll Logic
+  // On-Chain Bet & Roll Logic using AtomicTransactionComposer
   const playGame = async () => {
-    if (!activeAddress) {
+    if (!activeAddress || !transactionSigner) {
       setStatus('Please connect a wallet first.');
       return;
     }
@@ -65,31 +63,35 @@ function DiceGame() {
     setStatus('Preparing 1 ALGO bet...');
 
     try {
-      // 1. Fetch suggested params from Algorand TestNet
+      // Step A: Get suggested network parameters
       const params = await algodClient.getTransactionParams().do();
 
-      // 2. Build 1 ALGO Payment Txn
+      // Step B: Build Payment Transaction (1 ALGO = 1,000,000 microAlgos)
       const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
         from: activeAddress,
         to: HOUSE_ADDRESS,
-        amount: 1000000, // 1 ALGO = 1,000,000 microAlgos
+        amount: 1000000,
         suggestedParams: params
       });
 
       setStatus('Please approve the transaction in your wallet...');
 
-      // 3. Pass the algosdk.Transaction object directly into signTransactions
-      const signedTxns = await signTransactions([txn]);
+      // Step C: Create AtomicTransactionComposer and delegate signing
+      const atc = new algosdk.AtomicTransactionComposer();
+      atc.addTransaction({
+        txn: txn,
+        signer: transactionSigner
+      });
 
-      setStatus('Submitting transaction to TestNet...');
+      setStatus('Submitting bet to TestNet...');
 
-      // 4. Send raw signed transaction bytes to network
-      const { txId } = await algodClient.sendRawTransaction(signedTxns[0]).do();
-      await algosdk.waitForConfirmation(algodClient, txId, 4);
+      // Step D: Execute transaction on-chain & wait for confirmation
+      const result = await atc.execute(algodClient, 4);
+      const txId = result.txIDs[0];
 
-      // 5. Roll Dice after transaction confirms
       setStatus('Bet Confirmed! Rolling...');
 
+      // Step E: Execute dice roll logic
       setTimeout(() => {
         const rollResult = Math.floor(Math.random() * 6) + 1;
         const diceEmojis = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
