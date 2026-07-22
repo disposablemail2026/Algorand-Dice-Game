@@ -105,7 +105,7 @@ return`;
 
 const CLEAR_TEAL = `#pragma version 10\nint 1\nreturn`;
 
-// Helper: Converts Base64 to Uint8Array natively in browser without Buffer
+// Base64 to Uint8Array helper
 const base64ToBytes = (base64) => Uint8Array.from(atob(base64), c => c.charCodeAt(0));
 
 function DiceGame() {
@@ -136,7 +136,7 @@ function DiceGame() {
   // 1. One-Click Smart Contract Deployment
   const deployContract = async () => {
     if (!activeAddress || !transactionSigner) {
-      setStatus('Connect wallet first.');
+      setStatus('Please connect a wallet first.');
       return;
     }
 
@@ -144,35 +144,34 @@ function DiceGame() {
     setStatus('Compiling & deploying contract to TestNet...');
 
     try {
-      // Compile TEAL directly via algod Node API
+      // Compile TEAL programs
       const approvalCompiled = await algodClient.compile(APPROVAL_TEAL).do();
       const clearCompiled = await algodClient.compile(CLEAR_TEAL).do();
 
-      // Native browser base64 conversion
       const approvalBytes = base64ToBytes(approvalCompiled.result);
       const clearBytes = base64ToBytes(clearCompiled.result);
 
       const params = await algodClient.getTransactionParams().do();
 
-      const createTxn = algosdk.makeApplicationCreateTxnFromObject({
-        from: activeAddress,
-        approvalProgram: approvalBytes,
-        clearProgram: clearBytes,
-        numLocalInts: 0,
-        numLocalByteSlices: 0,
-        numGlobalInts: 0,
-        numGlobalByteSlices: 0,
-        onComplete: algosdk.OnApplicationComplete.NoOpOC,
-        suggestedParams: params
-      });
+      // Positional create call prevents object key mismatch
+      const createTxn = algosdk.makeApplicationCreateTxn(
+        activeAddress,
+        params,
+        algosdk.OnApplicationComplete.NoOpOC,
+        approvalBytes,
+        clearBytes,
+        0, // localInts
+        0, // localBytes
+        0, // globalInts
+        0  // globalBytes
+      );
 
       const atc = new algosdk.AtomicTransactionComposer();
       atc.addTransaction({ txn: createTxn, signer: transactionSigner });
 
-      setStatus('Approve application creation in your wallet...');
+      setStatus('Approve contract creation in your wallet...');
       const result = await atc.execute(algodClient, 4);
       
-      // Get App ID from transaction confirmation
       const txnInfo = await algodClient.pendingTransactionInformation(result.txIDs[0]).do();
       const newAppId = txnInfo['application-index'];
 
@@ -212,12 +211,12 @@ function DiceGame() {
       });
 
       // Application Call Txn
-      const appCallTxn = algosdk.makeApplicationNoOpTxnFromObject({
-        from: activeAddress,
-        appIndex: appId,
-        appArgs: [new TextEncoder().encode('roll')],
-        suggestedParams: params
-      });
+      const appCallTxn = algosdk.makeApplicationNoOpTxn(
+        activeAddress,
+        params,
+        appId,
+        [new TextEncoder().encode('roll')]
+      );
 
       const atc = new algosdk.AtomicTransactionComposer();
       atc.addTransaction({ txn: payTxn, signer: transactionSigner });
