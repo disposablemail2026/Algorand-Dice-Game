@@ -1,11 +1,16 @@
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import algosdk from 'algosdk';
 import { NetworkId, WalletId, WalletManager, WalletProvider, useWallet } from '@txnlab/use-wallet-react';
 
-// Configure Lute with site metadata so its popup can negotiate connection
 const walletManager = new WalletManager({
   wallets: [
-    WalletId.PERA,
+    {
+      id: WalletId.PERA,
+      options: {
+        compactMode: false
+      }
+    },
     WalletId.DEFLY,
     {
       id: WalletId.LUTE,
@@ -18,8 +23,13 @@ const walletManager = new WalletManager({
   network: NetworkId.TESTNET
 });
 
+// TestNet AlgoClient
+const algodClient = new algosdk.Algodv2('', 'https://testnet-api.algonode.cloud', '');
+// House/Dealer address receiving bets (TestNet faucet address or any valid ALGO address)
+const HOUSE_ADDRESS = 'HZ57J3TX55GWMAC27NVRRNYSPWA43V2M6GUZMBOXP23A5OMFY23U2TRP2X';
+
 function DiceGame() {
-  const { wallets, activeAddress, activeWallet } = useWallet();
+  const { wallets, activeAddress, activeWallet, transactionSigner } = useWallet();
   const [diceEmoji, setDiceEmoji] = useState('🎲');
   const [status, setStatus] = useState(activeAddress ? 'Ready to roll!' : 'Select a wallet below.');
   const [isRolling, setIsRolling] = useState(false);
@@ -31,7 +41,7 @@ function DiceGame() {
       setStatus(`Connected! Ready to roll.`);
     } catch (err) {
       console.error(err);
-      setStatus(`Connection failed: If using Lute, ensure pop-ups are allowed and you are logged in at lute.app.`);
+      setStatus(`Connection failed: Make sure pop-ups are allowed or open this page inside Pera's in-app browser.`);
     }
   };
 
@@ -42,25 +52,59 @@ function DiceGame() {
     }
   };
 
-  const playGame = () => {
-    if (!activeAddress) return;
+  // On-Chain Bet & Roll Logic
+  const playGame = async () => {
+    if (!activeAddress || !transactionSigner) return;
 
     setIsRolling(true);
-    setStatus('Rolling the dice...');
+    setStatus('Creating 1 ALGO bet transaction...');
 
-    setTimeout(() => {
-      const rollResult = Math.floor(Math.random() * 6) + 1;
-      const diceEmojis = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+    try {
+      // 1. Get suggested params from TestNet
+      const params = await algodClient.getTransactionParams().do();
+
+      // 2. Build 1 ALGO Payment Transaction (1,000,000 microAlgos)
+      const txn = algosdk.makePaymentTxnWithSuggestedParamsFromObject({
+        from: activeAddress,
+        to: HOUSE_ADDRESS,
+        amount: 1000000, // 1 ALGO
+        suggestedParams: params
+      });
+
+      setStatus('Please sign the 1 ALGO bet in your wallet...');
+
+      // 3. Prompt Wallet to Sign
+      const encodedTxn = algosdk.encodeUnsignedTransaction(txn);
+      const signedTxns = await transactionSigner([encodedTxn], [0]);
+
+      setStatus('Submitting transaction to TestNet...');
+
+      // 4. Send transaction to TestNet
+      const { txId } = await algodClient.sendRawTransaction(signedTxns).do();
+      await algosdk.waitForConfirmation(algodClient, txId, 4);
+
+      // 5. Execute Game Roll logic after payment confirms
+      setStatus('Bet Confirmed! Rolling the dice...');
       
-      setDiceEmoji(diceEmojis[rollResult - 1]);
+      setTimeout(() => {
+        const rollResult = Math.floor(Math.random() * 6) + 1;
+        const diceEmojis = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+        
+        setDiceEmoji(diceEmojis[rollResult - 1]);
 
-      if (rollResult >= 4) {
-        setStatus(`🎉 You rolled a ${rollResult}! YOU WIN!`);
-      } else {
-        setStatus(`❌ You rolled a ${rollResult}. Try again!`);
-      }
+        if (rollResult >= 4) {
+          setStatus(`🎉 You rolled a ${rollResult}! YOU WIN! (Tx: ${txId.substring(0, 6)}...)`);
+        } else {
+          setStatus(`❌ You rolled a ${rollResult}. House wins! (Tx: ${txId.substring(0, 6)}...)`);
+        }
+        setIsRolling(false);
+      }, 600);
+
+    } catch (err) {
+      console.error(err);
+      setStatus('Bet canceled or transaction failed.');
       setIsRolling(false);
-    }, 600);
+    }
   };
 
   return (
@@ -84,9 +128,9 @@ function DiceGame() {
         width: '100%'
       }}>
         <h1 style={{ margin: '0 0 10px 0' }}>🎲 Algo Dice Roll</h1>
-        <p style={{ color: '#aaa', fontSize: '0.9rem' }}>Predict if the roll will be <strong>4, 5, or 6</strong> to win!</p>
+        <p style={{ color: '#aaa', fontSize: '0.9rem' }}>Predict <strong>4, 5, or 6</strong> to win!</p>
 
-        {/* Wallet Connection Buttons */}
+        {/* Wallet Selection */}
         {!activeAddress ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '15px' }}>
             {wallets.map((wallet) => (
@@ -149,7 +193,7 @@ function DiceGame() {
             width: '100%'
           }}
         >
-          {isRolling ? 'Rolling...' : 'Bet 1 ALGO & Roll'}
+          {isRolling ? 'Processing Bet...' : 'Bet 1 ALGO & Roll'}
         </button>
 
         {/* Status Message */}
