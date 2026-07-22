@@ -144,7 +144,6 @@ function DiceGame() {
     setStatus('Compiling & deploying contract to TestNet...');
 
     try {
-      // Compile TEAL programs
       const approvalCompiled = await algodClient.compile(APPROVAL_TEAL).do();
       const clearCompiled = await algodClient.compile(CLEAR_TEAL).do();
 
@@ -153,18 +152,17 @@ function DiceGame() {
 
       const params = await algodClient.getTransactionParams().do();
 
-      // Positional create call prevents object key mismatch
-      const createTxn = algosdk.makeApplicationCreateTxn(
-        activeAddress,
-        params,
-        algosdk.OnApplicationComplete.NoOpOC,
-        approvalBytes,
-        clearBytes,
-        0, // localInts
-        0, // localBytes
-        0, // globalInts
-        0  // globalBytes
-      );
+      // Object-based creation helper compatible with modern algosdk versions
+      const createTxn = algosdk.makeApplicationCreateTxnFromObject({
+        from: activeAddress,
+        approvalProgram: approvalBytes,
+        clearProgram: clearBytes,
+        numLocalInts: 0,
+        numLocalByteSlices: 0,
+        numGlobalInts: 0,
+        numGlobalByteSlices: 0,
+        suggestedParams: params
+      });
 
       const atc = new algosdk.AtomicTransactionComposer();
       atc.addTransaction({ txn: createTxn, signer: transactionSigner });
@@ -211,12 +209,12 @@ function DiceGame() {
       });
 
       // Application Call Txn
-      const appCallTxn = algosdk.makeApplicationNoOpTxn(
-        activeAddress,
-        params,
-        appId,
-        [new TextEncoder().encode('roll')]
-      );
+      const appCallTxn = algosdk.makeApplicationNoOpTxnFromObject({
+        from: activeAddress,
+        appIndex: appId,
+        appArgs: [new TextEncoder().encode('roll')],
+        suggestedParams: params
+      });
 
       const atc = new algosdk.AtomicTransactionComposer();
       atc.addTransaction({ txn: payTxn, signer: transactionSigner });
