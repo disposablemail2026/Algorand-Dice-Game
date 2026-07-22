@@ -76,11 +76,11 @@ function DiceGame() {
 
       setStatus('Please approve the transaction in your wallet...');
 
-      // 3. Encode transaction for use-wallet signer
-      const encodedTxn = algosdk.encodeUnsignedTransaction(txn);
-      
-      // 4. Sign using useWallet's transactionSigner hook helper
-      const signedTxns = await transactionSigner([encodedTxn], [0]);
+      // 3. Convert transaction to Uint8Array bytes
+      const encodedTxn = txn.toByte();
+
+      // 4. Sign using useWallet's signTransactions helper
+      const signedTxns = await signTransactions([encodedTxn]);
 
       setStatus('Submitting transaction to TestNet...');
 
@@ -90,11 +90,11 @@ function DiceGame() {
 
       // 6. Roll Dice after transaction is confirmed on-chain
       setStatus('Bet Confirmed! Rolling...');
-      
+
       setTimeout(() => {
         const rollResult = Math.floor(Math.random() * 6) + 1;
         const diceEmojis = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
-        
+
         setDiceEmoji(diceEmojis[rollResult - 1]);
 
         if (rollResult >= 4) {
